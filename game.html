@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Business Simulator Pro · BSP - Jeu</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,100..900;1,100..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="js/chart.umd.js"></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏭</text></svg>">
+</head>
+<body>
+<!-- Écran de chargement -->
+<div id="loading-screen" style="position:fixed;top:0;left:0;width:100%;height:100%;background:var(--bg);z-index:10000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px">
+    <div class="gear-icon" style="font-size:64px;animation:spin 1s linear infinite">⚙️</div>
+    <p style="color:var(--text);font-size:18px">Chargement du jeu...</p>
+    <div style="width:200px;height:4px;background:var(--border);border-radius:4px;overflow:hidden">
+        <div id="loading-progress" style="width:0%;height:100%;background:linear-gradient(90deg,var(--blue),var(--purple));transition:width 0.3s"></div>
+    </div>
+    <p id="loading-status" style="color:var(--muted);font-size:12px">Initialisation...</p>
+</div>
+
+<div id="toast"></div>
+<div class="confirm-overlay" id="confirm-overlay"><div class="confirm-dialog"><div class="confirm-title" id="confirm-title"></div><div class="confirm-message" id="confirm-message"></div><div class="confirm-actions" id="confirm-actions"></div></div></div>
+<div class="hire-overlay" id="hire-overlay"><div class="hire-dialog"><div class="hire-title">👥 Recrutement</div><div class="hire-subtitle">Sélectionnez un candidat. Coût : <span id="hire-cost-display">0 €</span></div><div class="candidates-grid" id="candidates-grid"></div><div class="hire-actions"><button class="hire-refresh-btn" id="refresh-candidates-btn" onclick="refreshCandidates()">🔄 Changer</button><button class="hire-confirm-btn" id="hire-confirm-btn" onclick="confirmHire()" disabled>✅ Embaucher</button></div><button class="tb-btn" style="width:100%;margin-top:12px" onclick="closeHireOverlay()">Annuler</button></div></div>
+<div class="tutorial-overlay" id="bankruptcy-overlay"><div class="tutorial-dialog" style="text-align:center"><div style="font-size:56px">📉</div><div class="tutorial-title" style="color:var(--red)">Faillite !</div><p style="color:var(--muted);margin:16px 0">Trésorerie <b style="color:var(--red)">−250 000 €</b>.<br>Votre entreprise a fait faillite.</p><button class="btn btn-primary" onclick="declareBankruptcy()">↩ Retour au menu</button></div></div>
+<div class="tutorial-overlay" id="tutorial-overlay"><div class="tutorial-dialog"><div class="tutorial-title">🎮 Bienvenue !</div><div class="tutorial-section"><h4>🏭 Production</h4><p>Achetez des matières premières, produisez et vendez.</p></div><div class="tutorial-section"><h4>👥 Employés</h4><p>Embauchez des employés, assignez-leur des postes.</p></div><div class="tutorial-section"><h4>🏢 Concurrents</h4><p>Surveillez vos concurrents et utilisez des actions pour influencer le marché (déblocable par recherche).</p></div><div class="tutorial-section"><h4>⭐ Niveaux & XP</h4><p>Gagnez de l'XP en produisant et en réalisant des contrats pour débloquer de nouveaux produits et machines !</p></div><div class="tutorial-section"><h4>🔬 Recherche</h4><p>Débloquez des améliorations permanentes avec de l'argent et du temps (accessible niveau 3).</p></div><div class="tutorial-section"><h4>📜 Quêtes secondaires</h4><p>Des objectifs aléatoires apparaissent régulièrement. Acceptez-les pour gagner de l'argent et de l'XP !</p></div><button class="tb-btn green" style="width:100%;margin-top:20px" onclick="closeTutorial()">Commencer !</button></div></div>
+
+<!-- DEBUG PANEL -->
+<div class="debug-panel" id="debug-panel">
+    <div class="debug-header">
+        <h2>🛠️ Debug · v0.27.2</h2>
+        <button class="debug-close-btn" id="debug-close-btn">Fermer</button>
+    </div>
+    <div class="debug-content">
+        <div class="debug-event-buttons" id="debug-event-buttons"></div>
+        <div class="debug-grid" id="debug-grid"></div>
+    </div>
+</div>
+
+<div class="password-overlay" id="password-overlay">
+    <div class="password-dialog">
+        <h3>🔐 Accès développeur</h3>
+        <form onsubmit="checkPassword(); return false;">
+            <input type="password" class="password-input" id="debug-password" placeholder="••••" maxlength="4" autocomplete="off">
+            <div style="display:flex;gap:10px;margin-top:20px">
+                <button class="tb-btn" style="flex:1" type="button" onclick="closePasswordDialog()">Annuler</button>
+                <button class="tb-btn green" style="flex:1" type="submit">Valider</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="buy-machine-overlay" id="buy-machine-overlay"><div class="buy-machine-dialog"><div class="buy-machine-title">🛒 Acheter une machine</div><div id="machine-options-list"></div><button class="tb-btn" style="width:100%;margin-top:16px" onclick="closeBuyMachineOverlay()">Annuler</button></div></div>
+<div class="quest-overlay" id="quest-overlay"><div class="quest-dialog"><div class="quest-title" id="quest-title"></div><div class="quest-desc" id="quest-desc"></div><div class="quest-reward" id="quest-reward"></div><div class="quest-actions"><button class="tb-btn green" style="flex:1" id="quest-accept">✅ Accepter</button><button class="tb-btn danger" style="flex:1" id="quest-refuse">❌ Refuser</button></div></div></div>
+<div class="quest-complete-overlay" id="quest-complete-overlay"><div class="quest-complete-dialog"><div class="quest-complete-icon">🏆</div><div class="quest-complete-title" id="quest-complete-title">Quête complétée !</div><div class="quest-complete-desc" id="quest-complete-desc"></div><div class="quest-complete-reward" id="quest-complete-reward"></div><button class="quest-complete-btn" onclick="closeQuestCompletePopup()">Fermer</button></div></div>
+
+<div class="quest-icon" id="quest-icon" style="display: none;"><span>📜</span><div class="quest-notif" id="quest-notif">!</div></div>
+<div class="quest-active-bar" id="quest-active-bar"></div>
+
+<!-- Musique d'ambiance -->
+<audio id="ambiance-music" loop preload="auto" style="display: none;">
+    <source src="sounds/ambiance.mp3" type="audio/mpeg">
+</audio>
+
+<div id="screen-game" class="screen" style="display: none;">
+  <nav class="topbar">
+    <div class="topbar-left">
+      <span class="topbar-brand" id="bsp-brand">
+        <span class="brand-icon">🏭</span>
+        <span class="brand-text">BSP</span>
+        <span class="xp-badge" id="xp-badge">Niv 1 · 0 XP</span>
+      </span>
+      <div class="topbar-stats">
+        <div class="res-chip cash">
+          <span class="res-icon">💰</span>
+          <span class="res-label">Trésorerie</span>
+          <span class="val" id="tb-cash">—</span>
+        </div>
+        <div class="res-chip machines">
+          <span class="res-icon">⚙️</span>
+          <span class="res-label">Machines</span>
+          <span class="val" id="tb-mfree">—</span>/<span class="val" id="tb-mtotal">—</span>
+          <span class="chip-tooltip" id="machines-tooltip"></span>
+        </div>
+        <div class="res-chip employees">
+          <span class="res-icon">👷</span>
+          <span class="res-label">Employés</span>
+          <span class="val" id="tb-efree">—</span>/<span class="val" id="tb-etotal">—</span>
+          <span class="chip-tooltip" id="employees-tooltip"></span>
+        </div>
+      </div>
+    </div>
+    <div class="topbar-buttons">
+      <button class="nav-btn pink" onclick="openProductionPanel()"><span>🏭</span><span>Production</span></button>
+      <button class="nav-btn green" onclick="openSellPanel()"><span>🏷️</span><span>Vendre</span></button>
+      <button class="nav-btn amber" onclick="openMarketPanel()"><span>🛒</span><span>Marché</span></button>
+      <button class="nav-btn blue" onclick="openStockPanel()"><span>📦</span><span>Stocks</span></button>
+      <button class="nav-btn amber" onclick="openDemandPanel()"><span>📊</span><span>Demandes</span></button>
+      <button class="nav-btn teal" onclick="openContractsPanel()"><span>📋</span><span>Contrats</span></button>
+      <button class="nav-btn blue" onclick="openEmployeesPanel()"><span>👥</span><span>Personnel</span></button>
+      <button class="nav-btn amber" onclick="openMachinesPanel()"><span>⚙️</span><span>Machines</span></button>
+      <button class="nav-btn gold" id="competitors-btn" style="display:none" onclick="openCompetitorsPanel()"><span>🏢</span><span>Concurrents</span></button>
+      <button class="nav-btn teal" id="research-btn" style="display:none" onclick="openResearchPanel()"><span>🔬</span><span>Recherche</span></button>
+      <button class="nav-btn purple" onclick="openAccountingPanel()"><span>📈</span><span>Comptabilité</span></button>
+      <button class="nav-btn green" onclick="saveGame()"><span>💾</span><span>Sauvegarder</span></button>
+      <button class="nav-btn danger" onclick="backToMenu()"><span>✕</span><span>Menu</span></button>
+    </div>
+  </nav>
+  
+  <div class="main-content">
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="kpi-icon">💰</div><div class="kpi-info"><div class="kpi-label">Trésorerie</div><div class="kpi-value green" id="k-cash">—</div></div></div>
+      <div class="kpi-card"><div class="kpi-icon">📈</div><div class="kpi-info"><div class="kpi-label">Revenus</div><div class="kpi-value teal" id="k-earned">0 €</div></div></div>
+      <div class="kpi-card"><div class="kpi-icon">📦</div><div class="kpi-info"><div class="kpi-label">Stocks PF</div><div class="kpi-value blue" id="k-pstock">0</div></div></div>
+      <div class="kpi-card"><div class="kpi-icon">🏭</div><div class="kpi-info"><div class="kpi-label">Prod. active</div><div class="kpi-value amber" id="k-active">0</div></div></div>
+      <div class="kpi-card"><div class="kpi-icon">📊</div><div class="kpi-info"><div class="kpi-label">Part de marché</div><div class="kpi-value" id="k-market-share">15%</div></div></div>
+    </div>
+
+    <div class="event-container">
+      <div class="event-card">
+        <div class="ev-badge neutral" id="ev-badge">— Marché calme</div>
+        <div class="ev-text" id="ev-text">Aucun événement.</div>
+        <div class="ev-cd">Prochain <span class="cdval" id="ev-cd">—</span></div>
+      </div>
+      <div class="event-progress-container">
+        <div class="timer-wrap">
+          <div class="timer-fill" id="timer-fill" style="width:100%"></div>
+        </div>
+        <div class="gear-icon">⚙️</div>
+      </div>
+    </div>
+
+    <div class="happiness-bar-container">
+      <div class="happiness-label"><span>😊</span> Bonheur général</div>
+      <div class="happiness-progress"><div class="happiness-fill high" id="happiness-fill" style="width:75%"></div></div>
+      <div class="happiness-value" id="happiness-value">75%</div>
+    </div>
+
+    <!-- Réputation -->
+    <div class="reputation-container">
+      <div class="reputation-label"><span>🏆</span> Réputation</div>
+      <div class="reputation-value" id="reputation-value">0</div>
+      <div class="reputation-tier" id="reputation-tier">🪴 Micro entreprise</div>
+    </div>
+    <div class="reputation-progress-container">
+      <div class="reputation-progress-bar">
+        <div class="reputation-progress-fill" id="reputation-progress-fill" style="width:0%"></div>
+      </div>
+      <div class="reputation-progress-text" id="reputation-progress-text">0/0 vers prochain palier</div>
+    </div>
+
+    <div class="dashboard-grid">
+      <div class="dash-widget"><div class="dash-widget-title">⚙️ Machines <span class="dash-stats"><span style="color:var(--green)" id="dw-mok">0</span>·<span style="color:var(--red)" id="dw-mbr">0</span></span></div><div id="dw-machines-list" class="widget-content"></div></div>
+      <div class="dash-widget"><div class="dash-widget-title">📦 Stocks produits finis</div><div id="dw-stocks-list" class="widget-content"></div></div>
+      <div class="dash-widget"><div class="dash-widget-title">🏷️ Vente rapide</div><div id="dw-quicksell-list" class="widget-content"></div></div>
+    </div>
+
+    <div class="quick-categories">
+      <div class="quick-category">
+        <div class="quick-category-title">👥 EMPLOYÉS</div>
+        <div class="quick-category-buttons">
+          <button class="quick-cat-btn" onclick="openEmployeesPanel()">📋 Voir le personnel</button>
+          <button class="quick-cat-btn" onclick="openHireOverlay()">➕ Embaucher</button>
+        </div>
+      </div>
+      <div class="quick-category">
+        <div class="quick-category-title">🏭 PRODUCTION</div>
+        <div class="quick-category-buttons">
+          <button class="quick-cat-btn" onclick="openProductionPanel()">⚙️ Gérer la production</button>
+          <button class="quick-cat-btn" onclick="openMarketPanel()">🛒 Acheter matières</button>
+        </div>
+      </div>
+      <div class="quick-category">
+        <div class="quick-category-title">💰 FINANCES</div>
+        <div class="quick-category-buttons">
+          <button class="quick-cat-btn" onclick="openAccountingPanel()">📈 Voir comptabilité</button>
+          <button class="quick-cat-btn" onclick="openBankPanel()">🏦 Accéder à la banque</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="bottom-row">
+      <div class="card"><div class="card-title">🏭 Journal de production</div><div class="log-list" id="log-prod-list"></div></div>
+      <div class="mid-row"><div class="card"><div class="card-title">💰 Historique des transactions</div><div class="log-list" id="log-acc-list"></div></div></div>
+    </div>
+
+    <div class="chart-container"><div class="card"><div class="card-title">📈 Évolution de la trésorerie</div><div class="chart-wrap"><canvas id="main-chart"></canvas></div></div></div>
+  </div>
+</div>
+
+<div class="timers-container" id="timers-container" style="display: none;">
+  <div class="timer-item">
+    <span class="timer-label">🕐 Heure réelle</span>
+    <span class="timer-value blue" id="real-time">--:--:--</span>
+  </div>
+  <div class="timer-item">
+    <span class="timer-label">📅 Heure jeu</span>
+    <span class="timer-value purple" id="game-time">1 Jan 2026 00:00</span>
+  </div>
+</div>
+
+<!-- PANELS -->
+<div class="panel" id="panel-market"><div class="panel-header"><button class="tb-btn home" onclick="closePanel('market')">🏠</button><span>🛒</span><span class="panel-title">Marché</span><button class="panel-close" onclick="closePanel('market')">✕</button></div><div class="panel-body"><div class="panel-info"><span>Trésorerie :</span><span id="mkt-cash">—</span><span style="margin-left:auto">Prix / 60s</span></div><div class="cart-panel"><div class="cart-title"><span>🛒 Panier </span><span id="cart-count">0</span></div><div class="cart-items" id="cart-items"></div><div class="cart-total"><span>Total</span><span id="cart-total">0 €</span></div><div class="cart-actions"><button class="tb-btn" onclick="clearCart()">🗑️</button><button class="tb-btn green" onclick="checkoutCart()">✅ Valider</button></div></div><div class="search-bar"><input type="text" class="search-input" id="market-search" placeholder="🔍 Rechercher..." oninput="filterMarket()"></div><div class="market-grid" id="market-grid"></div></div></div>
+
+<div class="panel" id="panel-production"><div class="panel-header"><button class="tb-btn home" onclick="closePanel('production')">🏠</button><span>🏭</span><span class="panel-title">Production</span><div style="margin-left:auto;display:flex;gap:10px"><div class="res-chip machines">⚙️ <span id="prod-mfree">—</span>/<span id="prod-mtotal">—</span></div><div class="res-chip employees">👷 <span id="prod-efree">—</span>/<span id="prod-etotal">—</span></div></div><button class="panel-close" onclick="closePanel('production')">✕</button></div><div class="panel-body"><div class="tabs" id="prod-tabs"><button class="tab active" data-tier="debut" onclick="switchProdTab('debut')">🏭 Artisanat & Composants</button><button class="tab" data-tier="mid" onclick="switchProdTab('mid')">⚙️ Industrie légère</button><button class="tab" data-tier="last" onclick="switchProdTab('last')">🔬 Haute technologie</button><button class="tab" data-tier="end" onclick="switchProdTab('end')">💎 R&D avancée</button></div><div class="search-bar"><input type="text" class="search-input" id="prod-search" placeholder="🔍 Rechercher un produit..." oninput="filterProduction()"></div><div class="prod-grid" id="prod-grid"></div></div></div>
+
+<div class="panel" id="panel-sell"><div class="panel-header"><button class="tb-btn home" onclick="closePanel('sell')">🏠</button><span>🏷️</span><span class="panel-title">Vente</span><button class="panel-close" onclick="closePanel('sell')">✕</button></div><div class="panel-body"><div class="panel-info"><span>Trésorerie :</span><span id="sell-cash">—</span><span>Demande :</span><span id="sell-demand-mult">—</span></div><div class="sell-info">📌 Prix conseillé = prix de base. Plus le prix est élevé, plus la demande baisse. Taxe 20% appliquée.</div><div class="tabs" id="sell-tabs"><button class="tab active" data-tier="debut" onclick="switchSellTab('debut')">🏭 Artisanat & Composants</button><button class="tab" data-tier="mid" onclick="switchSellTab('mid')">⚙️ Industrie légère</button><button class="tab" data-tier="last" onclick="switchSellTab('last')">🔬 Haute technologie</button><button class="tab" data-tier="end" onclick="switchSellTab('end')">💎 R&D avancée</button></div><div class="search-bar"><input type="text" class="search-input" id="sell-search" placeholder="🔍 Rechercher un produit..." oninput="filterSell()"></div><div class="sell-grid" id="sell-grid"></div></div></div>
+
+<div class="panel" id="panel-demand"><div class="panel-header"><button class="tb-btn home" onclick="closePanel('demand')">🏠</button><span>📊</span><span class="panel-title">Demandes</span><button class="panel-close" onclick="closePanel('demand')">✕</button></div><div class="panel-body"><div class="search-bar"><input type="text" class="search-input" id="demand-search" placeholder="🔍 Rechercher..." oninput="filterDemand()"></div><div class="demand-grid" id="demand-grid"></div></div></div>
+
+<div class="panel" id="panel-stock"><div class="panel-header"><button class="tb-btn home" onclick="closePanel('stock')">🏠</button><span>📦</span><span class="panel-title">Stocks</span><button class="panel-close" onclick="closePanel('stock')">✕</button></div><div class="panel-body"><div class="tabs"><button class="tab active" onclick="switchStockTab('materials',this)">Matières</button><button class="tab" onclick="switchStockTab('products',this)">Produits finis</button><button class="tab" onclick="switchStockTab('productsN2',this)">🏭 Industrie légère</button><button class="tab" onclick="switchStockTab('productsN3',this)">🔬 Haute technologie</button><button class="tab" onclick="switchStockTab('productsN4',this)">💎 R&D avancée</button></div><div id="stock-materials"><table class="stock-table"><thead><tr><th>Matière</th><th>Stock</th><th>Prix</th><th>Valeur</th></tr></thead><tbody id="stock-materials-body"></tbody></table></div><div id="stock-products" style="display:none"><table class="stock-table"><thead><tr><th>Produit</th><th>Stock</th><th>Prix</th><th>Valeur</th></tr></thead><tbody id="stock-products-body"></tbody></table></div><div id="stock-productsN2" style="display:none"><table class="stock-table"><thead><tr><th>Produit (Industrie légère)</th><th>Stock</th><th>Prix</th><th>Valeur</th></tr></thead><tbody id="stock-productsN2-body"></tbody></tr></div><div id="stock-productsN3" style="display:none"><table class="stock-table"><thead><tr><th>Produit (Haute technologie)</th><th>Stock</th><th>Prix</th><th>Valeur</th></tr></thead><tbody id="stock-productsN3-body"></tbody></table></div><div id="stock-productsN4" style="display:none"><table class="stock-table"><thead><tr><th>Produit (R&D avancée)</th><th>Stock</th><th>Prix</th><th>Valeur</th></tr></thead><tbody id="stock-productsN4-body"></tbody></td></div></div></div>
+
+<div class="panel" id="panel-employees"><div class="panel-header"><button class="tb-btn home" onclick="closePanel('employees')">🏠</button><span>👥</span><span class="panel-title">Personnel</span><button class="tb-btn green" style="margin-left:auto" onclick="openHireOverlay()">+ Embaucher</button><button class="panel-close" onclick="closePanel('employees')">✕</button></div><div class="panel-body"><div class="tabs"><button class="tab active" onclick="switchEmployeeTab('list',this)">📋 Liste</button><button class="tab" onclick="switchEmployeeTab('jobs',this)">💼 Postes</button><button class="tab" onclick="switchEmployeeTab('training',this)">📚 Formation</button><button class="tab" onclick="switchEmployeeTab('bonus',this)">🎁 Primes</button></div>
+  <div id="employee-list-tab"><div class="panel-info"><span>Total :</span><span id="emp-total">—</span><span>Occupés :</span><span id="emp-busy">—</span><span>Dispo :</span><span id="emp-free">—</span><span>Formation :</span><span id="emp-training">0</span></div><div class="employee-grid" id="employee-grid"></div></div>
+  <div id="employee-jobs-tab" style="display:none"><div class="tabs"><button class="tab active" onclick="switchJobsSubTab('maintenance',this)">🔧 Maintenance & Entretien</button><button class="tab" onclick="switchJobsSubTab('management',this)">👔 Management & Logistique</button></div>
+    <div id="jobs-maintenance"><div class="job-assignment"><div class="job-title">🔧 Agent de maintenance</div><div class="job-selector"><div class="dropdown-checkbox" id="dropdown-maintenance"><button class="dropdown-btn" onclick="toggleDropdown('maintenance')">Sélectionner ▼</button><div class="dropdown-content" id="dropdown-content-maintenance"></div></div><button class="tb-btn green" onclick="assignSelectedToJob('maintenance')">Affecter</button></div><div>Actuels : <span id="current-maintenance">—</span></div></div>
+    <div class="job-assignment"><div class="job-title">🧹 Agent d'entretien</div><div class="job-selector"><div class="dropdown-checkbox" id="dropdown-cleaner"><button class="dropdown-btn" onclick="toggleDropdown('cleaner')">Sélectionner ▼</button><div class="dropdown-content" id="dropdown-content-cleaner"></div></div><button class="tb-btn green" onclick="assignSelectedToJob('cleaner')">Affecter</button></div><div>Actuels : <span id="current-cleaners">—</span></div></div></div>
+    <div id="jobs-management" style="display:none"><div class="job-assignment"><div class="job-title">📦 Manutentionnaire</div><div class="job-selector"><div class="dropdown-checkbox" id="dropdown-handler"><button class="dropdown-btn" onclick="toggleDropdown('handler')">Sélectionner ▼</button><div class="dropdown-content" id="dropdown-content-handler"></div></div><button class="tb-btn green" onclick="assignSelectedToJob('handler')">Affecter</button></div><div>Actuels : <span id="current-handlers">—</span></div></div>
+    <div class="job-assignment"><div class="job-title">👔 Manager de ligne</div><div class="job-selector"><div class="dropdown-checkbox" id="dropdown-lineManager"><button class="dropdown-btn" onclick="toggleDropdown('lineManager')">Sélectionner ▼</button><div class="dropdown-content" id="dropdown-content-lineManager"></div></div><button class="tb-btn green" onclick="assignSelectedToJob('lineManager')">Affecter</button></div><div>Actuels : <span id="current-lineManagers">—</span></div></div>
+    <div class="job-assignment"><div class="job-title">🏢 Manager de site</div><div class="job-selector"><div class="dropdown-checkbox" id="dropdown-siteManager"><button class="dropdown-btn" onclick="toggleDropdown('siteManager')">Sélectionner ▼</button><div class="dropdown-content" id="dropdown-content-siteManager"></div></div><button class="tb-btn green" onclick="assignSelectedToJob('siteManager')">Affecter</button></div><div>Actuels : <span id="current-siteManagers">—</span></div></div></div>
+  </div>
+  <div id="employee-training-tab" style="display:none"><div class="panel-info">📚 Envoyez des employés en formation (1 mois). Coût de base : 200€ + supplément selon compétences.</div><div class="job-assignment"><div class="job-title">Sélectionner les employés à former</div><div class="job-selector"><div class="dropdown-checkbox" id="dropdown-training"><button class="dropdown-btn" onclick="toggleDropdown('training')">Sélectionner ▼</button><div class="dropdown-content" id="dropdown-content-training"></div></div><div style="display:flex;justify-content:space-between;margin-top:8px"><span>Coût total : <span id="training-total-cost">0 €</span></span><button class="tb-btn green" onclick="startTraining()">📚 Lancer la formation</button></div></div></div><div class="card"><div class="card-title">Employés en formation</div><div class="log-list" id="training-list"></div></div></div>
+  <div id="employee-bonus-tab" style="display:none"><div class="bonus-section"><div style="font-weight:700;margin-bottom:12px;color:var(--amber)">🎁 Prime</div><div class="bonus-row"><select class="bonus-select" id="bonus-employee-select"><option value="">— Choisir —</option></select><input type="number" class="bonus-amount-input" id="bonus-amount" placeholder="Montant" value="500"><button class="tb-btn green" onclick="giveBonusToEmployee()">✅ Verser</button></div><div>Total mois : <span id="bonus-total-month">0 €</span></div></div><div class="card"><div class="card-title">Historique</div><div class="log-list" id="bonus-log-list"></div></div></div>
+</div></div>
+
+<div class="panel" id="panel-machines"><div class="panel-header"><button class="tb-btn home" onclick="closePanel('machines')">🏠</button><span>⚙️</span><span class="panel-title">Machines</span><button class="tb-btn green" style="margin-left:auto" onclick="openBuyMachineOverlay()">+ Acheter</button><button class="tb-btn danger" onclick="repairAllMachines()">🔧 Tout réparer</button><button class="panel-close" onclick="closePanel('machines')">✕</button></div><div class="panel-body"><div class="tabs" id="machines-tabs"><button class="tab active" onclick="switchMachinesTab('basic',this)">⚙️ Basic</button><button class="tab" onclick="switchMachinesTab('advanced',this)">🔧 Avancé</button><button class="tab" onclick="switchMachinesTab('pro',this)">⚡ Pro</button><button class="tab" onclick="switchMachinesTab('complex',this)">💎 Complexe</button></div><div id="machines-basic"><div class="panel-info"><span>Total :</span><span id="mach-total">—</span><span>Fonctionnelles :</span><span id="mach-functional">—</span><span>Panne :</span><span id="mach-broken">—</span><span>Occupées :</span><span id="mach-busy">—</span></div><div class="machine-grid" id="machine-grid-basic"></div></div><div id="machines-advanced" style="display:none"><div class="panel-info">🔧 Machines Avancées <span class="level-required">(Niveau 5 requis)</span></div><div class="machine-grid" id="machine-grid-advanced"></div></div><div id="machines-pro" style="display:none"><div class="panel-info">⚡ Machines Pro <span class="level-required">(Niveau 15 requis)</span></div><div class="machine-grid" id="machine-grid-pro"></div></div><div id="machines-complex" style="display:none"><div class="panel-info">💎 Machines Complexes <span class="level-required">(Niveau 30 requis)</span></div><div class="machine-grid" id="machine-grid-complex"></div></div></div></div>
+
+<div class="panel" id="panel-competitors"><div class="panel-header"><button class="tb-btn home" onclick="closePanel('competitors')">🏠</button><span>🏢</span><span class="panel-title">Concurrents</span><button class="panel-close" onclick="closePanel('competitors')">✕</button></div><div class="panel-body"><div class="panel-info">📊 Vos concurrents influencent le marché. Utilisez des actions pour influencer leur part de marché.</div><div class="competitors-grid" id="competitors-grid"></div><div class="competitor-impact"><div style="font-weight:700;margin-bottom:8px">📈 Impact concurrentiel global</div><div style="display:flex;justify-content:space-between;align-items:center"><span>Demande globale affectée :</span><span id="competitor-demand-impact" style="font-weight:700;color:var(--amber)">0%</span></div><div class="demand-bar-wrap"><div class="demand-bar-fill" id="competitor-impact-bar" style="width:0%"></div></div><div style="font-size:11px;color:var(--muted);margin-top:8px">Plus la part de marché des concurrents est élevée, plus votre demande est réduite.</div></div></div></div>
+
+<div class="panel" id="panel-contracts"><div class="panel-header"><button class="tb-btn home" onclick="closePanel('contracts')">🏠</button><span>📋</span><span class="panel-title">Contrats</span><button class="panel-close" onclick="closePanel('contracts')">✕</button></div><div class="panel-body"><div class="panel-info">📋 Contrats renouvelés quotidiennement. 5 max.</div><div class="contracts-grid" id="contracts-grid"></div></div></div>
+
+<div class="panel" id="panel-research"><div class="panel-header"><button class="tb-btn home" onclick="closePanel('research')">🏠</button><span>🔬</span><span class="panel-title">Recherche</span><button class="panel-close" onclick="closePanel('research')">✕</button></div><div class="panel-body"><div class="panel-info">🔬 Débloquez des améliorations permanentes avec de l'argent et du temps. Une seule recherche à la fois !</div><div class="research-points" id="research-points">Points de recherche : 0</div><div class="research-tree-viz" id="research-tree"></div></div></div>
+
+<div class="panel" id="panel-accounting"><div class="panel-header"><button class="tb-btn home" onclick="closePanel('accounting')">🏠</button><span>📈</span><span class="panel-title">Comptabilité</span><button class="panel-close" onclick="closePanel('accounting')">✕</button></div>
+  <div class="panel-body">
+    <div class="accounting-summary">
+      <div class="accounting-card"><div class="accounting-label">Trésorerie</div><div class="accounting-value green" id="acc-cash">—</div></div>
+      <div class="accounting-card"><div class="accounting-label">Revenus totaux</div><div class="accounting-value green" id="acc-revenue">—</div></div>
+      <div class="accounting-card"><div class="accounting-label">Dépenses totales</div><div class="accounting-value red" id="acc-expenses">—</div></div>
+      <div class="accounting-card"><div class="accounting-label">Bénéfice net</div><div class="accounting-value" id="acc-profit">—</div></div>
+      <div class="accounting-card"><div class="accounting-label">Taxes à payer</div><div class="accounting-value amber" id="acc-taxes">0 €</div></div>
+      <div class="accounting-card"><div class="accounting-label">Crédit restant</div><div class="accounting-value amber" id="acc-loan">0 €</div></div>
+    </div>
+    <div class="accounting-charts">
+      <div class="accounting-chart-card"><div class="card-title">📈 Trésorerie</div><div class="chart-wrap"><canvas id="cash-chart"></canvas></div></div>
+      <div class="accounting-chart-card"><div class="card-title">💰 Gains cumulés</div><div class="chart-wrap"><canvas id="income-chart"></canvas></div></div>
+      <div class="accounting-chart-card"><div class="card-title">💸 Dépenses cumulées</div><div class="chart-wrap"><canvas id="expense-chart"></canvas></div></div>
+    </div>
+    <div class="chart-views">
+      <button class="chart-view-btn active" id="cvb-realtime" onclick="setAccountingChartView('realtime')">⏱ Temps réel</button>
+      <button class="chart-view-btn" id="cvb-day" onclick="setAccountingChartView('day')">📅 Jour</button>
+      <button class="chart-view-btn" id="cvb-week" onclick="setAccountingChartView('week')">📆 Semaine</button>
+      <button class="chart-view-btn" id="cvb-month" onclick="setAccountingChartView('month')">🗓 Mois</button>
+      <button class="chart-view-btn" id="cvb-year" onclick="setAccountingChartView('year')">📊 Année</button>
+    </div>
+    <div class="card"><div class="card-title">Historique des transactions</div><div class="log-list" id="accounting-log-list"></div></div>
+    <div class="utilities-section">
+      <div class="utilities-header">⚡ Consommables & Énergie</div>
+      <div class="util-total-bar"><span>Charge totale</span><span id="util-total-cost">—</span><button class="tb-btn danger" onclick="payAllUtilities()">Payer tout</button></div>
+      <div class="util-grid" id="util-grid"></div>
+    </div>
+    <div class="bank-access" style="text-align: center; margin-top: 20px;">
+      <button class="tb-btn blue" style="padding:12px 30px;font-size:14px" onclick="openBankPanel()">🏦 Accéder à la Banque</button>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="panel-bank"><div class="panel-header"><button class="tb-btn home" onclick="closePanel('bank')">🏠</button><span>🏦</span><span class="panel-title">Banque</span><button class="panel-close" onclick="closePanel('bank')">✕</button></div><div class="panel-body"><div class="loan-slider-container"><h3>Demande de prêt</h3><div class="loan-amount-display" id="loan-amount-display">1 000 €</div><div class="loan-input-row"><input type="number" id="loan-amount-input" min="0" max="1000000" step="1000" value="1000" oninput="updateLoanSlider()"></div><input type="range" class="loan-slider" id="loan-slider" min="0" max="1000000" step="1000" value="1000" oninput="updateLoanInput()"><div class="loan-info"><div><span>Taux :</span><span id="loan-interest-rate">2.0%</span></div><div><span>Total :</span><span id="loan-total-amount">1 020 €</span></div><div><span>Mensualité :</span><span id="loan-payment-amount">102 €</span></div></div><button class="tb-btn green" style="width:100%;padding:15px" onclick="takeLoan()">✅ Valider</button></div></div></div>
+
+<!-- SCRIPTS -->
+<script src="js/constants.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/state.js"></script>
+<script src="js/employees.js"></script>
+<script src="js/production.js"></script>
+<script src="js/market.js"></script>
+<script src="js/sell.js"></script>
+<script src="js/contracts.js"></script>
+<script src="js/competitors.js"></script>
+<script src="js/research.js"></script>
+<script src="js/accounting.js"></script>
+<script src="js/quests.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+<script src="js/debug.js"></script>
+<script src="js/navigation.js"></script>
+
+<script>
+// ==================== FONCTIONS SUPPLÉMENTAIRES ====================
+
+function closeQuestCompletePopup() {
+    document.getElementById('quest-complete-overlay').style.display = 'none';
+}
+
+function backToMenu() {
+    window.location.href = 'index.html';
+}
+
+window.openHireOverlay = function() {
+    openPanel('employees');
+    setTimeout(() => {
+        if (typeof refreshCandidates === 'function') refreshCandidates();
+        let hireOverlay = document.getElementById('hire-overlay');
+        if (hireOverlay) hireOverlay.style.display = 'flex';
+    }, 100);
+};
+
+function showTimers() {
+    let timersContainer = document.getElementById('timers-container');
+    if (timersContainer) timersContainer.style.display = 'flex';
+}
+
+function updateEventDisplay() {
+    if (currentEvent) {
+        let evBadge = document.getElementById('ev-badge');
+        let evText = document.getElementById('ev-text');
+        if (evBadge) {
+            evBadge.textContent = currentEvent.label;
+            evBadge.className = `ev-badge ${currentEvent.type}`;
+        }
+        if (evText) evText.textContent = currentEvent.text;
+    }
+}
+
+// ==================== GESTION DU CHARGEMENT AUTOMATIQUE ====================
+
+function updateLoadingProgress(percent, text) {
+    let progressBar = document.getElementById('loading-progress');
+    let statusText = document.getElementById('loading-status');
+    if (progressBar) progressBar.style.width = percent + '%';
+    if (statusText) statusText.textContent = text;
+}
+
+function hideLoadingScreen() {
+    let loadingScreen = document.getElementById('loading-screen');
+    let gameScreen = document.getElementById('screen-game');
+    if (loadingScreen) {
+        loadingScreen.style.opacity = '0';
+        setTimeout(function() {
+            loadingScreen.style.display = 'none';
+            if (gameScreen) gameScreen.style.display = 'flex';
+        }, 500);
+    }
+}
+
+const urlParams = new URLSearchParams(window.location.search);
+const action = urlParams.get('action');
+const panelAction = urlParams.get('panel');
+
+window.addEventListener('load', function() {
+    updateLoadingProgress(20, "Chargement des scripts...");
+    
+    setTimeout(function() {
+        if (action === 'new') {
+            updateLoadingProgress(50, "Création d'une nouvelle partie...");
+            if (typeof startNewGame === 'function') startNewGame();
+        } else if (action === 'load') {
+            updateLoadingProgress(50, "Chargement de la sauvegarde...");
+            if (typeof loadGame === 'function') loadGame();
+        } else if (action === 'hire') {
+            updateLoadingProgress(50, "Chargement...");
+            if (typeof loadGame === 'function') {
+                loadGame();
+                setTimeout(() => openPanel('employees'), 1000);
+            }
+        } else if (panelAction) {
+            updateLoadingProgress(50, "Chargement...");
+            if (typeof loadGame === 'function') {
+                loadGame();
+                setTimeout(() => openPanel(panelAction), 1000);
+            }
+        }
+    }, 200);
+    
+    let checkInterval = setInterval(function() {
+        if (typeof S !== 'undefined' && S !== null && S.cash !== undefined) {
+            clearInterval(checkInterval);
+            updateLoadingProgress(100, "Prêt !");
+            setTimeout(function() {
+                hideLoadingScreen();
+                if (typeof updateUI === 'function') updateUI();
+                showTimers();
+            }, 500);
+        }
+    }, 100);
+    
+    setTimeout(function() {
+        clearInterval(checkInterval);
+        if (typeof S === 'undefined' || S === null) {
+            updateLoadingProgress(100, "Démarrage...");
+            setTimeout(hideLoadingScreen, 500);
+        }
+    }, 5000);
+});
+</script>
+</body>
+</html>
